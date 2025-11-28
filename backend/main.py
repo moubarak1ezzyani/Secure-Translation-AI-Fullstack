@@ -111,3 +111,4 @@ async def translate(req: TranslationRequest, current_user: User = Depends(get_cu
         raise HTTPException(status_code=500, detail="Error from HF API")
         
     return {"translation": response.json()[0]['translation_text']}
+    print("Final line")
