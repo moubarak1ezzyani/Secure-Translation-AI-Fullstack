@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:13
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: CEST0MOI1x
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: translation_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -15,7 +13,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "8000:8000"     # access : container
     depends_on:
       - db
     env_file:
