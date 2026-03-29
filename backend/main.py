@@ -23,8 +23,8 @@ HF_TOKEN = os.getenv("HF_API_TOKEN")
 
 # --- DB SETUP ---
 engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)     # Fasle -> session.commit() | push | prepare to connect -> engine
+Base = declarative_base()   # Base <=> MyBase (n'est pas conventionnel)
 
 class User(Base):
     __tablename__ = "users"
@@ -32,7 +32,7 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)       # METADATA : 1st time to connect with db
 
 def get_db():
     db = SessionLocal()
@@ -40,28 +40,33 @@ def get_db():
     finally: db.close()
 
 # --- SECURITY ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")       # bcrypt : ALGO | deprecier les algo obsolète
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-def create_access_token(data: dict):
+def create_access_token(data: dict):    # dict : infos à mettre dans JWT
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=30)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=30)     # expiration : temps actuel + duree determinee
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None: raise HTTPException(status_code=401)
+        username: str = payload.get("sub")      # {"sub" : username}
+        if username is None: raise HTTPException(status_code=401)       # 401 : Unauthorized
     except JWTError: raise HTTPException(status_code=401)
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter(User.username == username).first()     # q : choix de table | f : condition | f : 1er resultat
     if user is None: raise HTTPException(status_code=401)
     return user
-
+    
 # --- APP ---
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(         # CORS : Vigile d'un immeuble | MiddleWare : ctrl l'acces aux bureaux 
+    CORSMiddleware,
+    allow_origins=["*"],    # tous les domaines | "*" : aucune restriction
+    allow_methods=["*"],    # methodes HTTP : GET, POST, PUT, DELETE
+    allow_headers=["*"]     # HTTP Headers. ex : Authorization
+    )
 
 # --- MODELS Pydantic ---
 class UserAuth(BaseModel):
@@ -73,14 +78,14 @@ class TranslationRequest(BaseModel):
     direction: str      # fr -> en / en -> fr
 
 # --- ROUTES ---
-@app.post("/register")
+@app.post("/register")      # path = "/register"
 def register(user: UserAuth, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.username == user.username).first():
-        raise HTTPException(status_code=400, detail="Username already registered")
+    if db.query(User).filter(User.username == user.username).first():       # SELECT * FROM users WHERE username = usernameL LIMIT 1;
+        raise HTTPException(status_code=400, detail="Username already registered")  # 400 : Bad Request
     hashed_pw = pwd_context.hash(user.password)
     db_user = User(username=user.username, hashed_password=hashed_pw)
-    db.add(db_user)
-    db.commit()
+    db.add(db_user) 
+    db.commit()     # <=> INSERT INTO
     return {"message": "User created"}
 
 @app.post("/login")
@@ -88,6 +93,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not pwd_context.verify(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect credentials")
+
     token = create_access_token(data={"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
 
@@ -101,8 +107,8 @@ async def translate(req: TranslationRequest, current_user: User = Depends(get_cu
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     # print("token affiche",HF_TOKEN)
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(api_url, headers=headers, json={"inputs": req.text})
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(api_url, headers=headers, json={"inputs": req.text}, timeout=30.0)
     print("status code :", response.status_code)
     print("Response Body",response.text)
     if response.status_code == 503:
@@ -110,5 +116,5 @@ async def translate(req: TranslationRequest, current_user: User = Depends(get_cu
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="Error from HF API")
         
-    return {"translation": response.json()[0]['translation_text']}
-    print("Final line")
+    return {"translation": response.json()[0]['translation_text']}        # [{translation_text : "Hello"}]
+print("Final line")

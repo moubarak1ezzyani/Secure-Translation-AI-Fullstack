@@ -11,7 +11,6 @@ from main import app, get_db, Base
 # --- CONFIGURATION DE LA BASE DE TEST (SQLite en mémoire) ---
 # Cela permet de tester sans toucher à votre PostgreSQL
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
